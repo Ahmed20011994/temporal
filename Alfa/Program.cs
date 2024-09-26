@@ -1,38 +1,24 @@
-// Create a client to localhost on "default" namespace
 using Alfa;
 using Temporalio.Client;
-using Temporalio.Worker;
 
-var client = await TemporalClient.ConnectAsync(new("temporal:7233"));
+var builder = WebApplication.CreateBuilder(args);
 
-// Cancellation token to shutdown worker on ctrl+c
-using var tokenSource = new CancellationTokenSource();
-Console.CancelKeyPress += (_, eventArgs) =>
+// Add services to the container.
+builder.Services.AddSingleton(async _ =>
 {
-    tokenSource.Cancel();
-    eventArgs.Cancel = true;
-};
+    var client = await TemporalClient.ConnectAsync(new("temporal:7233"));
+    return client;
+});
 
-// Create an activity instance since we have instance activities. If we had
-// all static activities, we could just reference those directly.
-var activities = new Activities();
+builder.Services.AddControllers();
+builder.Services.AddScoped<Activities>();
+builder.Services.AddHostedService<TemporalWorkerService>();
+var app = builder.Build();
 
-// Create worker with the activity and workflow registered
-using var worker = new TemporalWorker(
-    client,
-    new TemporalWorkerOptions("Alfa-task-queue").
-        AddActivity(activities.SayHelloWorld).
-        AddActivity(activities.SayHelloUniverse).
-        AddWorkflow<HelloWorldWorkflow>().
-        AddWorkflow<HelloUniverseWorkflow>());
+app.UseHttpsRedirection();
 
-// Run worker until cancelled
-Console.WriteLine("Running worker");
-try
-{
-    await worker.ExecuteAsync(tokenSource.Token);
-}
-catch (OperationCanceledException)
-{
-    Console.WriteLine("Worker cancelled");
-}
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
